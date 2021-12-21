@@ -29,6 +29,7 @@ func init() {
 	flags.StringP("port", "p", "0", "port to listen to")
 	flags.StringP("prefix", "P", "/", "URL path prefix")
 	flags.String("log_format", "console", "logging format")
+	flags.String("log_path", "./webdav.log", "logging file path")
 }
 
 var rootCmd = &cobra.Command{
@@ -73,6 +74,10 @@ set WD_CERT.`,
 		loggerConfig.DisableCaller = true
 		loggerConfig.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
 		loggerConfig.Encoding = cfg.LogFormat
+		loggerConfig.OutputPaths = []string{
+			getOpt(flags, "log_path"),
+			"stdout",
+		}
 		logger, err := loggerConfig.Build()
 		if err != nil {
 			// if we fail to configure proper logging, then the user has deliberately

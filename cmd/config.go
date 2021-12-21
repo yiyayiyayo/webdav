@@ -2,7 +2,10 @@ package cmd
 
 import (
 	"errors"
+	"fmt"
+	"go.uber.org/zap"
 	"log"
+	"net/http"
 	"os"
 	"regexp"
 	"strconv"
@@ -128,6 +131,15 @@ func parseUsers(raw []interface{}, c *lib.Config) {
 					NoSniff: c.NoSniff,
 				},
 				LockSystem: webdav.NewMemLS(),
+				Logger: func(r *http.Request, err error) {
+					if r.Method == http.MethodPut {
+						if err == nil {
+							zap.L().Info(fmt.Sprintf("[Success]: PUT %s ", r.URL.Path))
+						} else {
+							zap.L().Warn(fmt.Sprintf("[Error]: PUT %s: %s", r.URL.Path, err))
+						}
+					}
+				},
 			}
 
 			c.Users[username] = user

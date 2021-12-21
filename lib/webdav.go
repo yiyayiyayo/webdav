@@ -74,14 +74,15 @@ func (c *Config) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 		// Gets the correct user for this request.
 		username, password, ok := r.BasicAuth()
-		zap.L().Info("login attempt", zap.String("username", username), zap.String("remote_address", r.RemoteAddr))
 		if !ok {
+			zap.L().Info("user not provided", zap.String("username", username), zap.String("remote_address", r.RemoteAddr))
 			http.Error(w, "Not authorized", 401)
 			return
 		}
 
 		user, ok := c.Users[username]
 		if !ok {
+			zap.L().Info("user not exist", zap.String("username", username), zap.String("remote_address", r.RemoteAddr))
 			http.Error(w, "Not authorized", 401)
 			return
 		}
@@ -93,7 +94,6 @@ func (c *Config) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 
 		u = user
-		zap.L().Info("user authorized", zap.String("username", username))
 	} else {
 		// Even if Auth is disabled, we might want to get
 		// the user from the Basic Auth header. Useful for Caddy
