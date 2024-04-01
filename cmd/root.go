@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"github.com/hacdias/webdav/v4/lib"
 	"log"
 	"net"
 	"net/http"
@@ -123,4 +124,12 @@ func initConfig() {
 	} else {
 		cfgFile = "Using config file: " + v.ConfigFileUsed()
 	}
+}
+
+func InitConfig(configFile string) *lib.Config {
+	cfgFile = configFile
+
+	initConfig()
+	cfg := readConfig(rootCmd.Flags())
+	return cfg
 }
