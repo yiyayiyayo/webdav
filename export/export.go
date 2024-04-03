@@ -1,6 +1,7 @@
 package webdav
 
 import (
+	"encoding/json"
 	"errors"
 	"github.com/hacdias/webdav/v4/cmd"
 	v "github.com/spf13/viper"
@@ -8,7 +9,16 @@ import (
 	"go.uber.org/zap/zapcore"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
+)
+
+const (
+	CodeStartFailed         = -0x1
+	CodeStopFailed          = -0x2
+	CodeStartAlreadyRunning = 0x01
+	CodeMessage             = 0x10
+	CodeRequest             = 0x20
 )
 
 var (
@@ -23,11 +33,35 @@ type _Instance struct {
 
 func Start(configFile string, callback Callback) {
 	if instance != nil {
-		callback.OnMessage(-1, "Already running.")
+		callback.OnMessage(CodeStartAlreadyRunning, "Already running.")
 		return
 	}
 
+	httpLogger := func(request *http.Request, err error) {
+		jsonString, _ := json.Marshal(map[string]interface{}{
+			"method":         request.Method,
+			"path":           request.URL.Path,
+			"content_length": request.ContentLength,
+			"close":          request.Close,
+			"x_expected_entity_length": func() int64 {
+				num, _ := strconv.ParseInt(request.Header.Get("X-Expected-Entity-Length"), 10, 64)
+				return num
+			}(),
+			"error": func() string {
+				if err == nil {
+					return ""
+				}
+				return err.Error()
+			}(),
+		})
+		callback.OnMessage(CodeRequest, string(jsonString))
+	}
+
 	config := cmd.InitConfig(configFile)
+	config.Handler.Logger = httpLogger
+	for _, u := range config.Users {
+		u.Handler.Logger = httpLogger
+	}
 
 	// init log
 	loggerConfig := zap.NewProductionConfig()
@@ -38,7 +72,7 @@ func Start(configFile string, callback Callback) {
 	loggerConfig.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
 	loggerConfig.Encoding = config.LogFormat
 	logger, err := loggerConfig.Build(zap.Hooks(func(entry zapcore.Entry) error {
-		callback.OnMessage(int(entry.Level), entry.Message)
+		callback.OnMessage(CodeMessage, entry.Message)
 		return nil
 	}))
 	if err != nil {
@@ -63,7 +97,7 @@ func Start(configFile string, callback Callback) {
 	}
 	listener, err := net.Listen(lnet, laddr)
 	if err != nil {
-		callback.OnMessage(-1, err.Error())
+		callback.OnMessage(CodeStartFailed, err.Error())
 		return
 	}
 
@@ -88,18 +122,22 @@ func Start(configFile string, callback Callback) {
 		if errors.Is(err, http.ErrServerClosed) {
 			ins.callback.OnStop()
 		} else if err != nil {
-			ins.callback.OnMessage(-1, "Error with "+err.Error())
-			instance = nil
+			ins.callback.OnMessage(CodeStartFailed, err.Error())
 		}
+		instance = nil
 	}(instance, tls, cert, key)
 
-	callback.OnStart(listener.Addr().String())
+	if addr, ok := listener.Addr().(*net.TCPAddr); ok {
+		callback.OnStart(strconv.Itoa(addr.Port))
+	} else {
+		callback.OnStart(listener.Addr().String())
+	}
 }
 
 func Stop() {
 	if ins := instance; ins != nil {
 		if err := ins.server.Close(); err != nil {
-			ins.callback.OnMessage(-1, err.Error())
+			ins.callback.OnMessage(CodeStopFailed, err.Error())
 		}
 	}
 }
